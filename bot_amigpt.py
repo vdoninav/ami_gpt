@@ -4,6 +4,8 @@ import torch
 import sqlite3
 import time
 import atexit
+import pymorphy3
+import regex as re
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
 import amigpt_tokens
@@ -20,9 +22,14 @@ model = GPT2LMHeadModel.from_pretrained("models/amigpt_large_2")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
+morph = pymorphy3.MorphAnalyzer()
+
 is_insane = False
 
 MAX_MESSAGE_LENGTH = 4096
+max_response_size = 40
+min_check_length = 11
+max_hist_default = 3
 
 # Подключение к базе данных SQLite и создание таблицы для хранения истории сообщений
 conn = sqlite3.connect('message_history.db', check_same_thread=False)
@@ -43,26 +50,48 @@ CREATE INDEX IF NOT EXISTS idx_user_id ON history (user_id)
 ''')
 conn.commit()
 
-import regex as re
+# Счетчик последних сообщений
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS user_counters (
+    user_id INTEGER PRIMARY KEY,
+    current_message_count INTEGER DEFAULT 0
+)
+''')
+conn.commit()
 
-import regex as re
+# Создание таблицы для хранения максимального лимита сообщений
+cursor.execute(f'''
+CREATE TABLE IF NOT EXISTS user_limits (
+    user_id INTEGER PRIMARY KEY,
+    max_messages INTEGER DEFAULT {max_hist_default}
+)
+''')
+conn.commit()
 
 
-def strip_me(input_string, n=1):
+def is_russian_word(word, min_length=3):
+    # Пропускаем слова, которые меньше заданной длины или содержат только цифры
+    if len(word) <= min_length or word.isdigit():
+        return True
+
+    # Проверяем каждую часть слова, если оно содержит дефис
+    parts = word.split('-')
+    return all(any(parse.is_known for parse in morph.parse(part)) for part in parts)
+
+
+def strip_me(input_string, n=1, min_length=3):
     # Найти позицию n-й новой строки
     pos = -1
     for _ in range(n):
         pos = input_string.find('\n', pos + 1)
         if pos == -1:
-            return "DEBUG MESSAGE - не найдена n-я новая строка"  # Если n-я новая строка не найдена, возвращаем пустую строку
+            return "DEBUG MESSAGE - не найдена n-я новая строка"
 
     # Извлекаем подстроку после n-й новой строки
     sub_string = input_string[pos + 1:]
 
     # Ищем кириллический символ
     cyr_match = re.search(r'\p{IsCyrillic}', sub_string)
-
-    # Если кириллических символов нет, возвращаем "что?"
     if not cyr_match:
         return "что?"
 
@@ -85,11 +114,13 @@ def strip_me(input_string, n=1):
         if punc_match:
             sub_string = sub_string[:punc_match.end()].strip()
 
-    # Убираем лишние пробелы и возвращаем строку
-    sub_string = re.sub(r'\s+', ' ', sub_string)
+    # Убираем лишние пробелы и фильтруем слова по их валидности
+    words = re.split(r'\s+', sub_string)
+    filtered_words = [word for word in words if is_russian_word(word, min_length)]
+    sub_string = ' '.join(filtered_words)
 
-    b = re.search(r'[А-Яа-яЁё]', sub_string)
-    if not b:
+    # Финальная проверка на наличие кириллических символов
+    if not re.search(r'[А-Яа-яЁё]', sub_string):
         return "что?"
 
     return sub_string
@@ -115,16 +146,40 @@ def send_welcome(message):
 @bot.message_handler(commands=['reset'])
 def reset_history(message):
     user_id = message.from_user.id
-    clear_user_history(user_id)
+    cursor.execute('''
+        INSERT OR REPLACE INTO user_counters (user_id, current_message_count)
+        VALUES (?, 0)
+    ''', (user_id,))
+    conn.commit()
     bot.reply_to(message, "Your history has been reset.", reply_markup=create_main_keyboard())
+
+
+def increment_message_count(user_id):
+    cursor.execute('SELECT current_message_count FROM user_counters WHERE user_id = ?', (user_id,))
+    current_count = cursor.fetchone()
+
+    if current_count:
+        current_count = current_count[0]
+        cursor.execute('SELECT max_messages FROM user_limits WHERE user_id = ?', (user_id,))
+        max_count = cursor.fetchone()
+        max_count = max_count[0] if max_count else max_hist_default  # num_db_msgs по умолчанию
+
+        # Увеличиваем счетчик, но не превышаем максимальное значение
+        if current_count < max_count:
+            current_count += 1
+            cursor.execute('UPDATE user_counters SET current_message_count = ? WHERE user_id = ?',
+                           (current_count, user_id))
+        conn.commit()
+    else:
+        cursor.execute('INSERT INTO user_counters (user_id, current_message_count) VALUES (?, ?)', (user_id, 1))
+        conn.commit()
 
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.from_user.id
-    global is_insane, num_db_msgs
+    global is_insane
 
-    # Сообщения в группах
     if message.chat.type in ['group', 'supergroup']:
         if is_insane:
             response = process_message(user_id, message.text)
@@ -132,9 +187,7 @@ def handle_message(message):
         if f"@{bot_username}" in message.text:
             response = process_message(user_id, message.text[len(bot_username) + 2:])
             bot.reply_to(message, response, reply_markup=create_main_keyboard())
-    # Сообщения в лс
     else:
-        # Обработка команд
         if message.text.lower() == 'help':
             send_welcome(message)
             return
@@ -149,13 +202,19 @@ def handle_message(message):
             is_insane = False
             bot.reply_to(message, "I\'m NOT INSANE.", reply_markup=create_main_keyboard())
             return
-        elif "set db size" in message.text.lower():
-            num_db_msgs = int(re.search(r'\d+', message.text).group())
-            bot.reply_to(message, f"DB size set to {num_db_msgs}", reply_markup=create_main_keyboard())
+        elif "set hist size" in message.text.lower():
+            max_history = int(re.search(r'\d+', message.text).group())
+            cursor.execute('INSERT OR REPLACE INTO user_limits (user_id, max_messages) VALUES (?, ?)',
+                           (user_id, max_history))
+            conn.commit()
+            bot.reply_to(message, f"Max history size set to {max_history}", reply_markup=create_main_keyboard())
             return
 
         # Обычное сообщение
-        save_message(user_id, f"{message.text}", num_db_msgs)
+        save_message(user_id, f"{message.text}")
+
+        # Увеличиваем счетчик
+        increment_message_count(user_id)
 
         response = process_message(user_id, message.text)
         while response.upper() == response:
@@ -163,26 +222,27 @@ def handle_message(message):
 
         bot.reply_to(message, response, reply_markup=create_main_keyboard())
         # Сохранение ответа бота в базу данных
-        save_message(user_id, f"{response}", num_db_msgs)
+        save_message(user_id, f"{response}")
 
-
-num_db_msgs = 3
-max_msg_len = 40
+        # Увеличиваем счетчик после ответа нейросети
+        increment_message_count(user_id)
 
 
 def process_message(user_id, text):
-    global max_msg_len, num_db_msgs
-    # Получение всей истории диалога из базы данных
-    msgs = get_message_history(user_id, num_db_msgs)
+    global max_response_size, min_check_length
+    cursor.execute('SELECT current_message_count FROM user_counters WHERE user_id = ?', (user_id,))
+    count_row = cursor.fetchone()
+    message_count = count_row[0] if count_row else 0
+
+    msgs = get_message_history(user_id, message_count)
     dialog_history = "\n".join(msgs) + "\n"
 
-    # Кодирование и генерация ответа
     in_prompt = f"{dialog_history}"
     inpt = tok.encode(in_prompt, return_tensors="pt")
-    max_len = max_msg_len + len(in_prompt)
+    max_len = max_response_size + len(in_prompt)
     out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=30.0,
                          do_sample=True, top_k=5, top_p=0.75, temperature=1)
-    response = strip_me(tok.decode(out[0]), len(msgs))
+    response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
 
     return response
 
@@ -208,7 +268,6 @@ def save_message(user_id, message, n=10):
 
 
 def get_message_history(user_id, n=3):
-    # Получаем последние n сообщений из базы данных
     cursor.execute('SELECT message FROM history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?', (user_id, n))
     rows = cursor.fetchall()
 
