@@ -6,6 +6,7 @@ import time
 import atexit
 import pymorphy3
 import regex as re
+from sys import stderr
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
 import amigpt_tokens
@@ -17,8 +18,8 @@ bot_token = amigpt_tokens.BOT_TOKEN
 bot_username = amigpt_tokens.BOT_NAME
 bot = telebot.TeleBot(bot_token)
 
-tok = GPT2Tokenizer.from_pretrained("models/amigpt_large_2")
-model = GPT2LMHeadModel.from_pretrained("models/amigpt_large_2")
+tok = GPT2Tokenizer.from_pretrained("models/amigpt_large_3")
+model = GPT2LMHeadModel.from_pretrained("models/amigpt_large_3")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -240,8 +241,8 @@ def process_message(user_id, text):
     in_prompt = f"{dialog_history}"
     inpt = tok.encode(in_prompt, return_tensors="pt")
     max_len = max_response_size + len(in_prompt)
-    out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=30.0,
-                         do_sample=True, top_k=5, top_p=0.75, temperature=1)
+    out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=5.0,
+                         do_sample=True, top_k=5, top_p=0.75, temperature=1, no_repeat_ngram_size=3)
     response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
 
     return response
@@ -288,6 +289,8 @@ def send_response(message, response):
         else:
             bot.reply_to(message, response)
 
+
+stderr.write("Initialized successfully\n")
 
 bot.infinity_polling()
 
