@@ -65,3 +65,9 @@ With each new message or response from the neural network, the bot increases the
 ## Conclusion
 
 AmiGPT is a flexible Telegram bot that can be used for intelligent conversations with users, as well as customized for various interaction scenarios. It allows full control over the message history and response generation logic.
+
+##
+`Built with Python 3.12`
+
+`Compatible with Python 3.9 or newer`
+
