@@ -28,7 +28,7 @@ morph = pymorphy3.MorphAnalyzer()
 is_insane = False
 
 MAX_MESSAGE_LENGTH = 4096
-max_response_size = 40
+max_response_size = 20
 min_check_length = 11
 max_hist_default = 3
 
@@ -242,7 +242,7 @@ def process_message(user_id, text):
     inpt = tok.encode(in_prompt, return_tensors="pt")
     max_len = max_response_size + len(in_prompt)
     out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=5.0,
-                         do_sample=True, top_k=5, top_p=0.75, temperature=1, no_repeat_ngram_size=3)
+                         do_sample=True, top_k=7, top_p=0.93, temperature=1, no_repeat_ngram_size=3)
     response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
 
     return response
