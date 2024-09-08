@@ -79,7 +79,7 @@ with open(output_file, 'w', encoding='utf-8') as out_file:
                                                 if contains_cyrillic(referenced_text) and contains_cyrillic(
                                                         current_text) and referenced_text != previous_referenced_text and len(
                                                     referenced_text) > 0 and current_text != referenced_text and referenced_text != previous_message:
-                                                    out_file.write(f'{referenced_text} \n')
+                                                    out_file.write(f'<s>{referenced_text} \n')
                                                     previous_referenced_text = referenced_text
                                                 if current_text != previous_message and len(
                                                         current_text) > 0 and contains_cyrillic(current_text):
@@ -88,5 +88,5 @@ with open(output_file, 'w', encoding='utf-8') as out_file:
                                 else:  # Сообщение не является ответом
                                     current_text = process_message(current_text_tag)
                                     if contains_cyrillic(current_text) and current_text != previous_message:
-                                        out_file.write(f'{current_text} \n')
+                                        out_file.write(f'<s>{current_text} \n')
                                         previous_message = current_text

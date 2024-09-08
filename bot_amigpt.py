@@ -8,6 +8,7 @@ import pymorphy3
 import regex as re
 from sys import stderr
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from transformers import MBartTokenizer, MBartForConditionalGeneration, AutoTokenizer
 
 import amigpt_tokens
 
@@ -18,10 +19,18 @@ bot_token = amigpt_tokens.BOT_TOKEN
 bot_username = amigpt_tokens.BOT_NAME
 bot = telebot.TeleBot(bot_token)
 
-tok = GPT2Tokenizer.from_pretrained("models/amigpt_large_3")
-model = GPT2LMHeadModel.from_pretrained("models/amigpt_large_3")
+model_name = "models/amigpt_large_4"
+tok = GPT2Tokenizer.from_pretrained(model_name)
+model = GPT2LMHeadModel.from_pretrained(model_name)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
+
+do_summarize = True
+if do_summarize:
+    model_name_summ = "models/mbart_ruDialogSum"
+    tokenizer_summ = AutoTokenizer.from_pretrained(model_name_summ)
+    model_summ = MBartForConditionalGeneration.from_pretrained(model_name_summ)
+    model_summ.eval()
 
 morph = pymorphy3.MorphAnalyzer()
 
@@ -30,7 +39,7 @@ is_insane = False
 MAX_MESSAGE_LENGTH = 4096
 max_response_size = 20
 min_check_length = 11
-max_hist_default = 3
+max_hist_default = 4
 
 # Подключение к базе данных SQLite и создание таблицы для хранения истории сообщений
 conn = sqlite3.connect('message_history.db', check_same_thread=False)
@@ -68,6 +77,27 @@ CREATE TABLE IF NOT EXISTS user_limits (
 )
 ''')
 conn.commit()
+
+
+def summarize(text):
+    input_ids = tokenizer_summ(
+        [text],
+        max_length=600,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt",
+    )["input_ids"]
+
+    output_ids = model_summ.generate(
+        input_ids=input_ids,
+        top_k=0,
+        num_beams=3,
+        no_repeat_ngram_size=3
+    )[0]
+
+    summary = tokenizer_summ.decode(output_ids, skip_special_tokens=True)
+
+    return summary
 
 
 def is_russian_word(word, min_length=3):
@@ -236,14 +266,24 @@ def process_message(user_id, text):
     message_count = count_row[0] if count_row else 0
 
     msgs = get_message_history(user_id, message_count)
-    dialog_history = "\n".join(msgs) + "\n"
+    dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
 
     in_prompt = f"{dialog_history}"
-    inpt = tok.encode(in_prompt, return_tensors="pt")
+    if do_summarize and len(in_prompt) > 300:
+        in_prompt = "<s>" + summarize(in_prompt)
+
+        current_newline_count = in_prompt.count("\n")
+        if current_newline_count < len(msgs):
+            in_prompt += "\n" * (len(msgs) - current_newline_count)
+
+    inpt = tok.encode(in_prompt + '\n', return_tensors="pt")
     max_len = max_response_size + len(in_prompt)
     out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=5.0,
                          do_sample=True, top_k=7, top_p=0.93, temperature=1, no_repeat_ngram_size=3)
     response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
+
+    # if len(response) > 50:
+    #     response = summarize(response)
 
     return response
 
