@@ -38,7 +38,7 @@ morph = pymorphy3.MorphAnalyzer()
 is_insane = False
 
 MAX_MESSAGE_LENGTH = 4096
-max_response_size = 32
+max_response_size = 40
 min_check_length = 11
 max_hist_default = 4
 
@@ -81,9 +81,10 @@ conn.commit()
 
 
 def summarize(text):
+    text1 = text
     input_ids = tokenizer_summ(
-        [text],
-        max_length=50,
+        [text1],
+        max_length=100,
         padding="max_length",
         truncation=True,
         return_tensors="pt",
@@ -131,20 +132,21 @@ def strip_me(input_string, n=1, min_length=3):
     sub_string = sub_string[cyr_match.start():]
 
     # Ищем конец сообщения: либо новая строка в пределах 40 символов, либо знаки препинания после 40-го символа
-    # if len(sub_string) > 40:
-    #     punc_match = re.search(r'[.!?]', sub_string[40:])
-    #     if punc_match:
-    #         sub_string = sub_string[:40 + punc_match.end()].strip()
-    #     else:
-    #         newline_match = re.search(r'\n', sub_string[:40])
-    #         if newline_match:
-    #             sub_string = sub_string[:newline_match.start()].strip()
-    #         else:
-    #             sub_string = sub_string[:40].strip()
-    # else:
-    #     punc_match = re.search(r'[.!?]', sub_string)
-    #     if punc_match:
-    #         sub_string = sub_string[:punc_match.end()].strip()
+    n = 50
+    if len(sub_string) > n:
+        punc_match = re.search(r'[.!?]', sub_string[n:])
+        if punc_match:
+            sub_string = sub_string[:n + punc_match.end()].strip()
+        else:
+            newline_match = re.search(r'\n', sub_string[:n])
+            if newline_match:
+                sub_string = sub_string[:newline_match.start()].strip()
+            else:
+                sub_string = sub_string[:n].strip()
+    else:
+        punc_match = re.search(r'[.!?]', sub_string)
+        if punc_match:
+            sub_string = sub_string[:punc_match.end()].strip()
 
     # Убираем лишние пробелы и фильтруем слова по их валидности
     words = re.split(r'\s+', sub_string)
@@ -268,10 +270,10 @@ def process_message(user_id, text):
 
     msgs = get_message_history(user_id, message_count)
     dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
-
     in_prompt = f"{dialog_history}"
-    if do_summarize and len(in_prompt) > 50:
-        in_prompt = "<s>" + text + "\n" + summarize(in_prompt)
+
+    if do_summarize and len(in_prompt) > 100:
+        in_prompt = "<s>" + text + "\nCONTEXT:" + summarize(in_prompt)
 
         current_newline_count = in_prompt.count("\n")
         if current_newline_count < len(msgs):
@@ -280,11 +282,8 @@ def process_message(user_id, text):
     inpt = tok.encode(in_prompt + '\n', return_tensors="pt")
     max_len = max_response_size + len(in_prompt)
     out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=5.0,
-                         do_sample=True, top_k=7, top_p=0.93, temperature=1, no_repeat_ngram_size=3)
+                         do_sample=True, top_k=5, top_p=0.94, temperature=1, no_repeat_ngram_size=3)
     response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
-
-    # if len(response) > 50:
-    #     response = summarize(response)
 
     return response
 
