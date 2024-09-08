@@ -1,40 +1,41 @@
 # AmiGPT Telegram Bot
 
-AmiGPT is a Telegram bot that uses a pre-trained GPT-2 model to communicate with users in private chats and groups. The bot generates responses based on the current conversation context and stores interaction history in an SQLite database, allowing it to take into account previous messages when forming responses. The bot also supports managing the number of messages stored in the context and allows users to reset or adjust the message limit.
+AmiGPT is a Telegram bot powered by a pre-trained GPT-2 model that communicates with users in private chats and groups. It generates responses based on the conversation context, utilizing an SQLite database to store and retrieve message history. The bot also supports message summarization, custom message limits, and can operate in "normal" or "insane" mode.
 
 ## Features
 
-- **AI-powered conversation**: Utilizes the GPT-2 model to generate responses based on the conversation context.
-- **Message history**: Saves and retrieves dialogue history from an SQLite database.
-- **History management**: Users can reset the number of messages taken into account or adjust the message limit.
-- **Modes**: Can operate in "normal" or "insane" mode, changing the nature of responses.
-- **Command handling**: Supports `/start`, `/help`, `/reset`, and allows setting message limits.
-- **Group chat support**: The bot processes mentions in group chats and responds to messages.
-- **Russian word filtering**: The bot filters messages by checking if they contain valid Russian words (with support for hyphenated words) and removes messages that don’t contain Cyrillic characters.
+- **AI-Powered Conversation**: Generates responses using the GPT-2 model, taking into account conversation context.
+- **Message History Management**: Saves and retrieves dialogue history using an SQLite database.
+- **Message Summarization**: Summarizes long conversation histories using an mBART model to keep the context concise.
+- **Adjustable Message Limits**: Users can set the number of past messages used for context or reset the message counter.
+- **Modes**: Supports "normal" and "insane" modes, changing the nature of responses.
+- **Group Chat Support**: Responds to messages where the bot is mentioned.
+- **Russian Language Filtering**: Filters messages to ensure they contain valid Russian words, supporting hyphenated words and ignoring messages without Cyrillic characters.
 
 ## Commands
 
 - **`/start`**: Starts the bot and displays a welcome message.
 - **`/help`**: Provides help and usage instructions for the bot.
-- **`/reset`**: Resets the message counter used for generating responses back to zero. After that, the bot will start counting messages again.
-- **`set hist size [number]`**: Sets the maximum number of messages that will be used in the context for generating responses.
+- **`/reset`**: Resets the message counter used for generating responses, starting with zero messages for the next response.
+- **`set hist size [number]`**: Sets the maximum number of messages the bot will consider when generating responses.
+- **"Insane" Mode**: Can be activated or deactivated with predefined trigger words set in the code.
 
 ### Special Commands
 
-- **Activate "insane" mode**: Send the trigger word defined in `INSANITY_ON` to activate the "insane" mode.
-- **Deactivate "insane" mode**: Send the trigger word defined in `INSANITY_OFF` to return to normal mode.
-- **Set the message limit for history**: Use the command `set hist size [number]` to specify how many messages the bot will keep in memory for each user.
+- **Activate "Insane" Mode**: Send the word defined in `INSANITY_ON` to switch the bot to an unpredictable, "insane" mode.
+- **Deactivate "Insane" Mode**: Send the word defined in `INSANITY_OFF` to return the bot to normal mode.
+- **Set History Size**: Use `set hist size [number]` to specify how many past messages the bot will use in the context for responses.
 
 ### Group Interaction
 
-- The bot responds to messages where its name is mentioned.
-- In "insane" mode, the bot may respond to more messages or behave more unpredictably.
+- The bot responds to mentions in group chats.
+- In "insane" mode, the bot may respond to more messages or behave in a less predictable manner.
 
 ## Message History Logic
 
-The bot saves message history in an SQLite database. Instead of deleting messages upon reset, the bot simply starts ignoring older messages until users send new ones. The message limit can be configured for each user using the `set hist size` command.
+AmiGPT saves all user messages in an SQLite database. When a user resets their message history with `/reset`, the bot does not delete messages but starts using fewer messages in context (starting with zero). As the user continues chatting, the bot increases the number of messages used for context until it reaches the maximum limit, which can be adjusted.
 
-With each new message or response from the neural network, the bot increases the number of messages it takes into account in the context, up to the predefined limit. The limit can be reset at any time using `/reset`.
+The message limit can be customized for each user with the `set hist size` command.
 
 ### Database Structure
 
@@ -43,31 +44,44 @@ With each new message or response from the neural network, the bot increases the
    - Columns: `id`, `user_id`, `message`, `timestamp`.
 
 2. **`user_counters` table**:
-   - Tracks the current number of messages that the bot uses for responses.
+   - Tracks how many past messages the bot uses for generating responses.
    - Columns: `user_id`, `current_message_count`.
 
 3. **`user_limits` table**:
-   - Stores the maximum number of messages the bot will consider for each user.
+   - Stores the maximum number of messages to be used in responses for each user.
    - Columns: `user_id`, `max_messages`.
 
 ## Technical Details
 
-- **Model**: GPT-2 with pre-trained weights loaded via the HuggingFace `transformers` library.
-- **Platform**: Python, using PyTorch for model execution.
-- **Text processing**: The bot filters messages based on the presence of valid Russian words and removes sequences of numbers or non-Cyrillic characters.
-- **Responses**: Response length is limited to 40 characters by default (configurable in the code).
+- **Models**:
+  - GPT-2 (loaded via HuggingFace `transformers` library) is used for conversation generation.
+  - mBART is used for summarizing long conversation histories.
+- **Platform**: Python 3.12, using PyTorch for running models.
+- **Device Compatibility**: Automatically runs on CUDA (NVIDIA GPU), MPS (Apple Silicon), or CPU depending on the available hardware.
+- **Text Processing**:
+  - Filters out messages that don't contain valid Russian words.
+  - Removes non-Cyrillic characters and sequences of digits from messages.
+- **Message Summarization**: If the conversation history exceeds a certain length, it is summarized using the mBART model.
+- **Response Generation**: Responses are limited to a configurable size (default 40 characters), with support for temperature, top-k, and top-p parameters for controlling generation.
 
 ## Customization
 
-- **Message history**: Adjust the number of stored messages with the variable `max_hist_default` or by using the command `set hist size`.
-- **Text filtering**: The bot checks words for the presence of Cyrillic characters and filters out invalid words. You can customize the minimum word length for validation in the `is_russian_word` function.
+- **History Size**: Change the number of past messages stored in the context with the `max_hist_default` variable or the `set hist size` command.
+- **Text Validation**: Adjust the minimum word length for filtering Russian words in the `is_russian_word` function.
+- **Summarization**: Enable or disable the summarization feature by toggling the `do_summarize` flag in the bot's configuration.
+- **Response Length**: Control the maximum length of generated responses using the `max_response_size` variable.
+
+## Example Setup
+
+1. **Start the bot**: The bot uses `/start` and `/help` commands to initialize and guide users.
+2. **Reset Message Counter**: Use `/reset` to reset how many messages the bot considers when generating a response.
+3. **Set Message Limit**: Use `set hist size [number]` to set the number of past messages the bot uses in context.
 
 ## Conclusion
 
-AmiGPT is a flexible Telegram bot that can be used for intelligent conversations with users, as well as customized for various interaction scenarios. It allows full control over the message history and response generation logic.
+AmiGPT is a highly configurable Telegram bot designed for intelligent conversation management. It supports Russian language filtering, message summarization, and can be customized for various interaction needs. With built-in history management and response generation logic, it offers flexible tools for engaging with users in private and group chats.
 
 ##
 `Built with Python 3.12`
 
 `Compatible with Python 3.9 or newer`
-
