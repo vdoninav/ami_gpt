@@ -22,7 +22,8 @@ bot = telebot.TeleBot(bot_token)
 model_name = "models/amigpt_large_4"
 tok = GPT2Tokenizer.from_pretrained(model_name)
 model = GPT2LMHeadModel.from_pretrained(model_name)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+stderr.write(f"Device: {device.type}\n")
 model.to(device)
 
 do_summarize = True
@@ -82,7 +83,7 @@ conn.commit()
 def summarize(text):
     input_ids = tokenizer_summ(
         [text],
-        max_length=600,
+        max_length=100,
         padding="max_length",
         truncation=True,
         return_tensors="pt",
@@ -90,7 +91,7 @@ def summarize(text):
 
     output_ids = model_summ.generate(
         input_ids=input_ids,
-        top_k=0,
+        # top_k=0,
         num_beams=3,
         no_repeat_ngram_size=3
     )[0]
@@ -269,7 +270,7 @@ def process_message(user_id, text):
     dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
 
     in_prompt = f"{dialog_history}"
-    if do_summarize and len(in_prompt) > 300:
+    if do_summarize and len(in_prompt) > 100:
         in_prompt = "<s>" + summarize(in_prompt)
 
         current_newline_count = in_prompt.count("\n")
