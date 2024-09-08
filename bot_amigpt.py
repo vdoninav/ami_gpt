@@ -38,7 +38,7 @@ morph = pymorphy3.MorphAnalyzer()
 is_insane = False
 
 MAX_MESSAGE_LENGTH = 4096
-max_response_size = 20
+max_response_size = 32
 min_check_length = 11
 max_hist_default = 4
 
@@ -83,7 +83,7 @@ conn.commit()
 def summarize(text):
     input_ids = tokenizer_summ(
         [text],
-        max_length=100,
+        max_length=50,
         padding="max_length",
         truncation=True,
         return_tensors="pt",
@@ -131,20 +131,20 @@ def strip_me(input_string, n=1, min_length=3):
     sub_string = sub_string[cyr_match.start():]
 
     # Ищем конец сообщения: либо новая строка в пределах 40 символов, либо знаки препинания после 40-го символа
-    if len(sub_string) > 40:
-        punc_match = re.search(r'[.!?]', sub_string[40:])
-        if punc_match:
-            sub_string = sub_string[:40 + punc_match.end()].strip()
-        else:
-            newline_match = re.search(r'\n', sub_string[:40])
-            if newline_match:
-                sub_string = sub_string[:newline_match.start()].strip()
-            else:
-                sub_string = sub_string[:40].strip()
-    else:
-        punc_match = re.search(r'[.!?]', sub_string)
-        if punc_match:
-            sub_string = sub_string[:punc_match.end()].strip()
+    # if len(sub_string) > 40:
+    #     punc_match = re.search(r'[.!?]', sub_string[40:])
+    #     if punc_match:
+    #         sub_string = sub_string[:40 + punc_match.end()].strip()
+    #     else:
+    #         newline_match = re.search(r'\n', sub_string[:40])
+    #         if newline_match:
+    #             sub_string = sub_string[:newline_match.start()].strip()
+    #         else:
+    #             sub_string = sub_string[:40].strip()
+    # else:
+    #     punc_match = re.search(r'[.!?]', sub_string)
+    #     if punc_match:
+    #         sub_string = sub_string[:punc_match.end()].strip()
 
     # Убираем лишние пробелы и фильтруем слова по их валидности
     words = re.split(r'\s+', sub_string)
@@ -270,8 +270,8 @@ def process_message(user_id, text):
     dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
 
     in_prompt = f"{dialog_history}"
-    if do_summarize and len(in_prompt) > 100:
-        in_prompt = "<s>" + summarize(in_prompt)
+    if do_summarize and len(in_prompt) > 50:
+        in_prompt = "<s>" + text + "\n" + summarize(in_prompt)
 
         current_newline_count = in_prompt.count("\n")
         if current_newline_count < len(msgs):
