@@ -123,36 +123,37 @@ def strip_me(input_string, n=1, min_length=3):
     # Извлекаем подстроку после n-й новой строки
     sub_string = input_string[pos + 1:]
 
-    # Быстрый поиск кириллического символа
-    for i, char in enumerate(sub_string):
-        if 'А' <= char <= 'я' or char == 'Ё' or char == 'ё':
-            sub_string = sub_string[i:]
-            break
-    else:
+    # Ищем кириллический символ
+    cyr_match = re.search(r'\p{IsCyrillic}', sub_string)
+    if not cyr_match:
         return "что?"
 
-    # Ограничение длины строки и поиск пунктуации
+    # Отрезаем строку от первого кириллического символа
+    sub_string = sub_string[cyr_match.start():]
+
+    # Ищем конец сообщения: либо новая строка в пределах 40 символов, либо знаки препинания после 40-го символа
     n = 50
     if len(sub_string) > n:
-        punc_pos = min(
-            sub_string.find(punc) for punc in '.!?\n' if sub_string.find(punc) != -1 and sub_string.find(punc) > n)
-        if punc_pos == -1:
-            sub_string = sub_string[:n].strip()
-        else:
+        punc_positions = [sub_string.find(punc) for punc in '.!?\n' if
+                          sub_string.find(punc) != -1 and sub_string.find(punc) > n]
+        if punc_positions:  # Если есть найденные символы
+            punc_pos = min(punc_positions)
             sub_string = sub_string[:punc_pos + 1].strip()
-
+        else:
+            sub_string = sub_string[:n].strip()
     else:
-        punc_pos = min(sub_string.find(punc) for punc in '.!?' if sub_string.find(punc) != -1)
-        if punc_pos != -1:
+        punc_positions = [sub_string.find(punc) for punc in '.!?' if sub_string.find(punc) != -1]
+        if punc_positions:
+            punc_pos = min(punc_positions)
             sub_string = sub_string[:punc_pos + 1].strip()
 
     # Убираем лишние пробелы и фильтруем слова по их валидности
-    words = sub_string.split()
+    words = re.split(r'\s+', sub_string)
     filtered_words = [word for word in words if is_russian_word(word, min_length)]
     sub_string = ' '.join(filtered_words)
 
     # Финальная проверка на наличие кириллических символов
-    if not any('А' <= char <= 'я' or char == 'Ё' or char == 'ё' for char in sub_string):
+    if not re.search(r'[А-Яа-яЁё]', sub_string):
         return "что?"
 
     return sub_string
