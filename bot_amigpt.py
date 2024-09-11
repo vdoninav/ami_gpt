@@ -1,14 +1,14 @@
-import telebot
-import numpy as np
-import torch
-import sqlite3
-import time
 import atexit
+import sqlite3
+from sys import stderr
+
+import numpy as np
 import pymorphy3
 import regex as re
-from sys import stderr
+import telebot
+import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from transformers import MBartTokenizer, MBartForConditionalGeneration, AutoTokenizer
+from transformers import MBartForConditionalGeneration, AutoTokenizer
 
 import amigpt_tokens
 
