@@ -19,7 +19,7 @@ bot_token = amigpt_tokens.BOT_TOKEN
 bot_username = amigpt_tokens.BOT_NAME
 bot = telebot.TeleBot(bot_token)
 
-model_name = "models/amigpt_large_4"
+model_name = "models/amigpt5"
 tok = GPT2Tokenizer.from_pretrained(model_name)
 model = GPT2LMHeadModel.from_pretrained(model_name)
 device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -84,7 +84,7 @@ def summarize(text):
     text1 = text
     input_ids = tokenizer_summ(
         [text1],
-        max_length=100,
+        max_length=300,
         padding="max_length",
         truncation=True,
         return_tensors="pt",
@@ -132,10 +132,10 @@ def strip_me(input_string, n=1, min_length=3):
     sub_string = sub_string[cyr_match.start():]
 
     # Ищем конец сообщения: либо новая строка в пределах 40 символов, либо знаки препинания после 40-го символа
-    n = 50
+    n = 300
     if len(sub_string) > n:
         punc_positions = [sub_string.find(punc) for punc in '.!?\n' if
-                          sub_string.find(punc) != -1 and sub_string.find(punc) > n]
+                          sub_string.find(punc) != -1 and sub_string.find(punc) < n]
         if punc_positions:  # Если есть найденные символы
             punc_pos = min(punc_positions)
             sub_string = sub_string[:punc_pos + 1].strip()
@@ -271,8 +271,8 @@ def process_message(user_id, text):
     dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
     in_prompt = f"{dialog_history}"
 
-    if do_summarize and len(in_prompt) > 100:
-        in_prompt = "<s>" + text + "\nCONTEXT:" + summarize(in_prompt)
+    if do_summarize and len(in_prompt) > 300:
+        in_prompt = "<s>" + text + "\n<s>" + summarize(in_prompt)
 
         current_newline_count = in_prompt.count("\n")
         if current_newline_count < len(msgs):
@@ -281,7 +281,7 @@ def process_message(user_id, text):
     inpt = tok.encode(in_prompt + '\n', return_tensors="pt")
     max_len = max_response_size + len(in_prompt)
     out = model.generate(inpt.to(device), max_length=max_len, repetition_penalty=5.0,
-                         do_sample=True, top_k=5, top_p=0.94, temperature=1, no_repeat_ngram_size=3)
+                         do_sample=True, top_k=5, top_p=0.95, temperature=0.7, no_repeat_ngram_size=3)
     response = strip_me(tok.decode(out[0]), len(msgs), min_check_length)
 
     return response
