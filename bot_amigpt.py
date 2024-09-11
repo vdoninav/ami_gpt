@@ -137,7 +137,8 @@ def strip_me(input_string, n=1, min_length=3):
         punc_positions = [sub_string.find(punc) for punc in '.!?\n' if
                           sub_string.find(punc) != -1 and sub_string.find(punc) < n]
         if punc_positions:  # Если есть найденные символы
-            punc_pos = min(punc_positions)
+
+            punc_pos = sorted(punc_positions)[1] if len(punc_positions) > 1 else punc_positions[0]
             sub_string = sub_string[:punc_pos + 1].strip()
         else:
             sub_string = sub_string[:n].strip()
@@ -173,7 +174,11 @@ def create_main_keyboard():
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome! How can I assist you today?", reply_markup=create_main_keyboard())
+    bot.reply_to(message, "Welcome to AmiGPT!\n\n"
+                          "Here are the commands you can use:\n"
+                          "- /start or /help: Show this help message and available commands.\n"
+                          "- /reset: Reset your conversation history. The bot will forget everything you have written before.\n\n"
+                          "Have fun chatting!", reply_markup=create_main_keyboard())
 
 
 @bot.message_handler(commands=['reset'])
@@ -184,7 +189,9 @@ def reset_history(message):
         VALUES (?, 0)
     ''', (user_id,))
     conn.commit()
-    bot.reply_to(message, "Your history has been reset.", reply_markup=create_main_keyboard())
+    bot.reply_to(message, "Your conversation history has been reset. "
+                          "The bot forgot all your previous responses."
+                 , reply_markup=create_main_keyboard())
 
 
 def increment_message_count(user_id):
