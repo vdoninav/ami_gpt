@@ -57,7 +57,7 @@ max_hist_default = 4
 conn = sqlite3.connect('message_history.db', check_same_thread=False)
 cursor = conn.cursor()
 
-# Create the history table with chat_id
+# Update the history table to include chat_id
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,20 +69,13 @@ CREATE TABLE IF NOT EXISTS history (
 ''')
 conn.commit()
 
+# Create an index on chat_id
 cursor.execute('''
 CREATE INDEX IF NOT EXISTS idx_chat_id ON history (chat_id)
 ''')
 conn.commit()
 
 # Create counters for users and chats
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS user_counters (
-    user_id INTEGER PRIMARY KEY,
-    current_message_count INTEGER DEFAULT 0
-)
-''')
-conn.commit()
-
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS chat_counters (
     chat_id INTEGER PRIMARY KEY,
@@ -91,15 +84,15 @@ CREATE TABLE IF NOT EXISTS chat_counters (
 ''')
 conn.commit()
 
-# Create tables for storing maximum message limits
-cursor.execute(f'''
-CREATE TABLE IF NOT EXISTS user_limits (
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS user_counters (
     user_id INTEGER PRIMARY KEY,
-    max_messages INTEGER DEFAULT {max_hist_default}
+    current_message_count INTEGER DEFAULT 0
 )
 ''')
 conn.commit()
 
+# Create tables for storing maximum message limits
 cursor.execute(f'''
 CREATE TABLE IF NOT EXISTS chat_limits (
     chat_id INTEGER PRIMARY KEY,
@@ -108,13 +101,20 @@ CREATE TABLE IF NOT EXISTS chat_limits (
 ''')
 conn.commit()
 
+cursor.execute(f'''
+CREATE TABLE IF NOT EXISTS user_limits (
+    user_id INTEGER PRIMARY KEY,
+    max_messages INTEGER DEFAULT {max_hist_default}
+)
+''')
+conn.commit()
 
-# Function to summarize text using the mBART model
-def summarize(text):
+
+def summarize(text, max_length=300):
     try:
         input_ids = tokenizer_summ(
             [text],
-            max_length=1024,
+            max_length=max_length,
             padding="max_length",
             truncation=True,
             return_tensors="pt",
@@ -133,7 +133,6 @@ def summarize(text):
         return ""
 
 
-# Function to check if a word is Russian
 def is_russian_word(word, min_length=3):
     if len(word) <= min_length or word.isdigit():
         return True
@@ -141,7 +140,6 @@ def is_russian_word(word, min_length=3):
     return all(any(parse.is_known for parse in morph.parse(part)) for part in parts)
 
 
-# Function to process the model's output and clean it up
 def strip_me(input_string, n=1, min_length=3):
     try:
         pos = -1
@@ -187,12 +185,10 @@ def strip_me(input_string, n=1, min_length=3):
         return "что?"
 
 
-# Function to split long messages
 def split_message(message):
     return [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
 
 
-# Function to create the main keyboard
 def create_main_keyboard():
     keyboard = telebot.types.ReplyKeyboardMarkup(
         keyboard=[
@@ -203,7 +199,6 @@ def create_main_keyboard():
     return keyboard
 
 
-# Handler for /start and /help commands
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     help_message = (
@@ -212,14 +207,13 @@ def send_welcome(message):
         "- /start or /help: Show this help message and available commands.\n"
         "- /reset: Reset your conversation history. The bot will forget everything you have written before.\n"
         "- set hist size [number]: Set the number of messages to use from your conversation history for generating responses.\n"
-        "- summarize [n]: Summarize the last n messages in the group (default is 100 if n is not provided).\n\n"
+        "- summarize [n]: Summarize your last n messages (default is 300 if n is not provided).\n\n"
         "You can also activate 'insane' mode by sending a special keyword, or switch back to normal mode using another keyword.\n\n"
         "Have fun chatting!"
     )
     bot.reply_to(message, help_message, reply_markup=create_main_keyboard())
 
 
-# Handler for /reset command
 @bot.message_handler(commands=['reset'])
 def reset_history(message):
     chat_id = message.chat.id
@@ -233,7 +227,6 @@ def reset_history(message):
                  reply_markup=create_main_keyboard())
 
 
-# Function to increment the message count
 def increment_message_count(chat_id):
     cursor.execute('SELECT current_message_count FROM chat_counters WHERE chat_id = ?', (chat_id,))
     current_count = cursor.fetchone()
@@ -254,13 +247,14 @@ def increment_message_count(chat_id):
         conn.commit()
 
 
-# Handler for all messages
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
+    global is_insane
 
     # Initialize 'is_insane' status for the chat if not present
+
     if chat_id not in is_insane:
         is_insane[chat_id] = False
 
@@ -271,7 +265,37 @@ def handle_message(message):
         # Increment message count
         increment_message_count(chat_id)
 
-        if 'summarize' in message.text.lower():
+        # Check if the message is a reply to one of the bot's messages
+        if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
+            # Process the reply
+            response = process_message(chat_id, user_id, message.text)
+            bot.reply_to(message, response)
+            # Save the bot's response to the database
+            save_message(chat_id, None, response)
+            # Increment message count after the bot's response
+            increment_message_count(chat_id)
+            return
+
+        if is_insane[chat_id]:
+            response = process_message(chat_id, user_id, message.text)
+            bot.reply_to(message, response, reply_markup=create_main_keyboard())
+            # Save the bot's response to the database
+            save_message(chat_id, None, response)
+            # Increment message count after the bot's response
+            increment_message_count(chat_id)
+            return
+
+        if f"@{bot_username}" in message.text:
+            text = message.text.replace(f"@{bot_username}", '').strip()
+            response = process_message(chat_id, user_id, text)
+            bot.reply_to(message, response, reply_markup=create_main_keyboard())
+            # Save the bot's response to the database
+            save_message(chat_id, None, response)
+            # Increment message count after the bot's response
+            increment_message_count(chat_id)
+            return
+
+        if message.text.lower().startswith('summarize'):
             # Extract number of messages to summarize
             match = re.search(r'summarize\s*(\d+)?', message.text.lower())
             if match:
@@ -279,37 +303,66 @@ def handle_message(message):
                 if n:
                     n = int(n)
                     if n <= 0:
-                        bot.reply_to(message, "Please provide a positive number of messages to summarize.")
+                        bot.reply_to(message, "Please provide a positive number of messages to summarize.",
+                                     reply_markup=create_main_keyboard())
                         return
+                    else:
+                        n = min(n, 300)  # Limit to 300 messages max
                 else:
-                    n = 100  # Default to 100 messages
+                    n = 100
             else:
                 n = 100
 
-            # Get the last n messages from the group
+            # Get the user's message history
             msgs = get_message_history(chat_id, n)
             if msgs:
-                summarized_text = summarize("\n".join(msgs))
+                summarized_text = summarize("<s>" + "\n<s>".join(msgs) + "\n", max_length=3000)
                 if summarized_text:
-                    bot.reply_to(message, f"Summary of the last {n} messages:\n\n{summarized_text}")
+                    bot.reply_to(message, f"Summary of your last {len(msgs)} messages:\n\n{summarized_text}",
+                                 reply_markup=create_main_keyboard())
+                else:
+                    bot.reply_to(message, "An error occurred while summarizing your messages.",
+                                 reply_markup=create_main_keyboard())
             else:
-                bot.reply_to(message, "Not enough messages to summarize.")
+                bot.reply_to(message, "Not enough messages to summarize.", reply_markup=create_main_keyboard())
             return
-
-        if is_insane.get(chat_id, False):
-            response = process_message(chat_id, user_id, message.text)
-            bot.reply_to(message, response, reply_markup=create_main_keyboard())
-
-        if f"@{bot_username}" in message.text:
-            text = message.text.replace(f"@{bot_username}", '').strip()
-            response = process_message(chat_id, user_id, text)
-            bot.reply_to(message, response, reply_markup=create_main_keyboard())
     else:
         if message.text.lower() == 'help':
             send_welcome(message)
             return
         elif message.text.lower() == 'reset':
             reset_history(message)
+            return
+        elif message.text.lower().startswith('summarize'):
+            # Extract number of messages to summarize
+            match = re.search(r'summarize\s*(\d+)?', message.text.lower())
+            if match:
+                n = match.group(1)
+                if n:
+                    n = int(n)
+                    if n <= 0:
+                        bot.reply_to(message, "Please provide a positive number of messages to summarize.",
+                                     reply_markup=create_main_keyboard())
+                        return
+                    else:
+                        n = min(n, 300)  # Limit to 300 messages max
+                else:
+                    n = 100
+            else:
+                n = 100
+
+            # Get the user's message history
+            msgs = get_user_message_history(user_id, n)
+            if msgs:
+                summarized_text = summarize("<s>" + "\n<s>".join(msgs) + "\n", max_length=3000)
+                if summarized_text:
+                    bot.reply_to(message, f"Summary of your last {len(msgs)} messages:\n\n{summarized_text}",
+                                 reply_markup=create_main_keyboard())
+                else:
+                    bot.reply_to(message, "An error occurred while summarizing your messages.",
+                                 reply_markup=create_main_keyboard())
+            else:
+                bot.reply_to(message, "Not enough messages to summarize.", reply_markup=create_main_keyboard())
             return
         elif tokens_amigpt.INSANITY_ON in message.text:
             is_insane[chat_id] = True
@@ -323,8 +376,8 @@ def handle_message(message):
             match = re.search(r'\d+', message.text)
             if match:
                 max_history = int(match.group())
-                cursor.execute('INSERT OR REPLACE INTO chat_limits (chat_id, max_messages) VALUES (?, ?)',
-                               (chat_id, max_history))
+                cursor.execute('INSERT OR REPLACE INTO user_limits (user_id, max_messages) VALUES (?, ?)',
+                               (user_id, max_history))
                 conn.commit()
                 bot.reply_to(message, f"Max history size set to {max_history}", reply_markup=create_main_keyboard())
             else:
@@ -350,7 +403,6 @@ def handle_message(message):
         increment_message_count(chat_id)
 
 
-# Function to process the user's message and generate a response
 def process_message(chat_id, user_id, text):
     global max_response_size, min_check_length
     cursor.execute('SELECT current_message_count FROM chat_counters WHERE chat_id = ?', (chat_id,))
@@ -379,23 +431,21 @@ def process_message(chat_id, user_id, text):
     return response
 
 
-# Function to save a message to the database
 def save_message(chat_id, user_id, message):
     cursor.execute('INSERT INTO history (chat_id, user_id, message) VALUES (?, ?, ?)', (chat_id, user_id, message))
     conn.commit()
 
 
-# Function to retrieve message history
-def get_message_history(chat_id, n=3):
-    cursor.execute('SELECT message FROM history WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?', (chat_id, n))
+def get_user_message_history(user_id, n=300):
+    cursor.execute('SELECT message FROM history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?', (user_id, n))
     rows = cursor.fetchall()
     return [row[0] for row in reversed(rows)]
 
 
-# Function to clear chat history
-def clear_chat_history(chat_id):
-    cursor.execute('DELETE FROM history WHERE chat_id = ?', (chat_id,))
-    conn.commit()
+def get_message_history(chat_id, n=3):
+    cursor.execute('SELECT message FROM history WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?', (chat_id, n))
+    rows = cursor.fetchall()
+    return [row[0] for row in reversed(rows)]
 
 
 stderr.write("Initialized successfully\n")

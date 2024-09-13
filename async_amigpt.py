@@ -126,7 +126,7 @@ def summarize(text, max_length=300):
     try:
         input_ids = tokenizer_summ(
             [text],
-            max_length=1024,
+            max_length=max_length,
             padding="max_length",
             truncation=True,
             return_tensors="pt",
@@ -134,7 +134,7 @@ def summarize(text, max_length=300):
 
         output_ids = model_summ.generate(
             input_ids=input_ids,
-            max_length=max_length,
+            # max_length=max_length,
             num_beams=3,
             no_repeat_ngram_size=3,
         )[0]
