@@ -332,7 +332,8 @@ async def handle_message(message: Message):
                 return
 
             # Check if bot is mentioned or in insane mode
-            if is_insane.get(chat_id, False) or f"@{bot_username}" in user_text:
+            if is_insane.get(chat_id,
+                             False) or f"@{bot_username}" in user_text or message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
                 # Remove bot mention if present
                 text = user_text.replace(f"@{bot_username}", '').strip()
                 max_summarize_length = 1500
