@@ -324,7 +324,7 @@ async def handle_message(message: Message):
                 # Get the last n messages from the group
                 msgs = await get_message_history(chat_id, n)
                 if msgs:
-                    summarized_text = summarize("\n".join(msgs), max_length=3000)
+                    summarized_text = summarize("<s>" + "\n<s>".join(msgs) + "\n", max_length=3000)
                     if summarized_text:
                         await reply_message(message, f"Summary of the last {n} messages:\n\n{summarized_text}")
                 else:
@@ -433,14 +433,14 @@ async def handle_message(message: Message):
                         else:
                             n = min(n, 300)  # Limit to 300 messages max
                     else:
-                        n = 300
+                        n = 100
                 else:
-                    n = 300
+                    n = 100
 
                 # Get the user's message history
                 msgs = await get_user_message_history(chat_id, user_id, n)
                 if msgs:
-                    summarized_text = summarize("\n".join(msgs), max_length=3000)
+                    summarized_text = summarize("<s>" + "\n<s>".join(msgs) + "\n", max_length=3000)
                     if summarized_text:
                         await message.reply(
                             f"Summary of your last {len(msgs)} messages:\n\n{summarized_text}",
