@@ -10,13 +10,13 @@ import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformers import MBartForConditionalGeneration, AutoTokenizer
 
-import amigpt_tokens
+import tokens_amigpt
 
 np.random.seed(77)
 torch.manual_seed(77)
 
-bot_token = amigpt_tokens.BOT_TOKEN
-bot_username = amigpt_tokens.BOT_NAME
+bot_token = tokens_amigpt.BOT_TOKEN
+bot_username = tokens_amigpt.BOT_NAME
 bot = telebot.TeleBot(bot_token)
 
 model_name = "models/amigpt5"
@@ -234,11 +234,11 @@ def handle_message(message):
         elif message.text.lower() == 'reset':
             reset_history(message)
             return
-        elif amigpt_tokens.INSANITY_ON in message.text:
+        elif tokens_amigpt.INSANITY_ON in message.text:
             is_insane = True
             bot.reply_to(message, "I\'m INSANE!!!", reply_markup=create_main_keyboard())
             return
-        elif amigpt_tokens.INSANITY_OFF in message.text:
+        elif tokens_amigpt.INSANITY_OFF in message.text:
             is_insane = False
             bot.reply_to(message, "I\'m NOT INSANE.", reply_markup=create_main_keyboard())
             return

@@ -1,7 +1,10 @@
-beautifulsoup4==4.12.3
-numpy==2.1.0
-pymorphy3==2.0.2
-pyTelegramBotAPI==4.22.1
-regex==2024.7.24
-torch==2.4.0
-transformers==4.44.2
+beautifulsoup4~=4.12.3
+numpy~=2.1.0
+pymorphy3~=2.0.2
+pyTelegramBotAPI~=4.22.1
+regex~=2024.7.24
+torch~=2.4.0
+transformers~=4.44.2
+datasets~=2.21.0
+evaluate~=0.4.2
+aiogram~=2.25.1

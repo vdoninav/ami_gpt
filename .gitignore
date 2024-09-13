@@ -1,6 +1,7 @@
 models/
 htmls/
 texts/
-amigpt_tokens.py
+archive/
+tokens_amigpt.py
 .DS_Store
 .idea
