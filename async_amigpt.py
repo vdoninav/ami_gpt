@@ -80,7 +80,7 @@ max_hist_default = 4
 p = 0.5  # Probability for random summary messages in group chats
 
 # Create a ThreadPoolExecutor for running model inferences
-model_executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
+model_executor = ThreadPoolExecutor(max_workers=8)  # Adjust the number of workers as needed
 
 
 # Function to initialize the database
@@ -471,7 +471,7 @@ async def handle_message(message: Message):
             # Increment message count
             await increment_message_count(chat_id)
 
-            max_summarize_length = 300
+            max_summarize_length = 500
 
             response = await process_message(chat_id, user_text, max_summarize_length)
             while response.upper() == response:
@@ -504,7 +504,7 @@ async def get_user_hist_size(chat_id):
 
 
 # Function to process the user's message and generate a response
-async def process_message(chat_id, text, max_summarize_length=300):
+async def process_message(chat_id, text, max_summarize_length=500):
     global max_response_size, min_check_length
     try:
         message_count = await get_user_hist_size(chat_id)
