@@ -425,6 +425,7 @@ async def handle_message(message: Message):
             elif user_text.lower().startswith('summarize'):
                 # Extract number of messages to summarize
                 match = re.search(r'summarize\s*(\d+)?', user_text.lower())
+                message_count = await get_user_hist_size(chat_id)
                 if match:
                     n = match.group(1)
                     if n:
@@ -436,11 +437,11 @@ async def handle_message(message: Message):
                             )
                             return
                         else:
-                            n = min(n, 300)  # Limit to 300 messages max
+                            n = min(n, 100)  # Limit to 300 messages max
                     else:
-                        n = 100
+                        n = message_count
                 else:
-                    n = 100
+                    n = message_count
 
                 # Get the user's message history
                 msgs = await get_message_history(chat_id, n)
@@ -486,9 +487,7 @@ async def handle_message(message: Message):
         await reply_message(message, "An error occurred while processing your message.")
 
 
-# Function to process the user's message and generate a response
-async def process_message(chat_id, text, max_summarize_length=300):
-    global max_response_size, min_check_length
+async def get_user_hist_size(chat_id):
     try:
         async with aiosqlite.connect('message_history.db') as db:
             async with db.execute(
@@ -497,6 +496,18 @@ async def process_message(chat_id, text, max_summarize_length=300):
             ) as cursor:
                 row = await cursor.fetchone()
                 message_count = row[0] if row else 0
+
+        return message_count
+    except Exception as e:
+        logger.error(f"Error while getting history size for chat_id {chat_id}: {e}")
+        return 0
+
+
+# Function to process the user's message and generate a response
+async def process_message(chat_id, text, max_summarize_length=300):
+    global max_response_size, min_check_length
+    try:
+        message_count = await get_user_hist_size(chat_id)
 
         msgs = await get_message_history(chat_id, message_count)
         dialog_history = "<s>" + "\n<s>".join(msgs) + "\n"
