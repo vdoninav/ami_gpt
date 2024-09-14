@@ -77,7 +77,7 @@ MAX_MESSAGE_LENGTH = 4096
 max_response_size = 40
 min_check_length = 11
 max_hist_default = 4
-p = 0.001  # Probability for random summary messages in group chats
+p = 0.5  # Probability for random summary messages in group chats
 
 # Create a ThreadPoolExecutor for running model inferences
 model_executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
