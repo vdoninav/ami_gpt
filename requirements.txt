@@ -8,3 +8,4 @@ transformers~=4.44.2
 datasets~=2.21.0
 evaluate~=0.4.2
 aiogram~=2.25.1
+sentencepiece~=0.2.0

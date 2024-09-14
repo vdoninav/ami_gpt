@@ -384,6 +384,9 @@ async def handle_message(message: Message):
             elif user_text.lower() == 'reset':
                 await reset_history(message)
                 return
+            elif "get hist" in user_text.lower():
+                await print_user_hist(message, chat_id)
+                return
             elif tokens_amigpt.INSANITY_ON in user_text:
                 is_insane[chat_id] = True
                 await reply_message(message, "I'm INSANE!!!", reply_markup=create_main_keyboard())
@@ -439,7 +442,7 @@ async def handle_message(message: Message):
                     n = 100
 
                 # Get the user's message history
-                msgs = await get_user_message_history(chat_id, user_id, n)
+                msgs = await get_message_history(chat_id, n)
                 if msgs:
                     summarized_text = summarize("<s>" + "\n<s>".join(msgs) + "\n", max_length=3000)
                     if summarized_text:
@@ -507,6 +510,7 @@ async def process_message(chat_id, text, max_summarize_length=300):
                 in_prompt += "\n" * (len(msgs) - current_newline_count)
 
         # Prepare input for the model
+        # logger.error(f"In prompt: {in_prompt + '\n'}")
         inpt = tok.encode(in_prompt + '\n', return_tensors="pt").to(device)
         max_len = max_response_size + len(in_prompt)
 
@@ -533,6 +537,19 @@ async def process_message(chat_id, text, max_summarize_length=300):
     except Exception as e:
         logger.error(f"Process message error for chat_id {chat_id}: {e}")
         return "I couldn't process that message."
+
+
+async def print_user_hist(message, chat_id):
+    async with aiosqlite.connect('message_history.db') as db:
+        async with db.execute('SELECT current_message_count FROM chat_counters WHERE chat_id = ?',
+                              (chat_id,)) as cursor:
+            row = await cursor.fetchone()
+            message_count = row[0] if row else 0
+
+    msgs = await get_message_history(chat_id, message_count)
+    dialog_history = "\n\n".join(msgs) + "\n"
+
+    await reply_message(message, dialog_history, reply_markup=create_main_keyboard())
 
 
 # Function to save a message to the database
