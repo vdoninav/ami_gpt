@@ -124,8 +124,9 @@ def sanitize_input(text):
 # Function to summarize text using the mBART model
 def summarize(text, max_length=300):
     try:
+        text1 = text
         input_ids = tokenizer_summ(
-            [text],
+            [text1],
             max_length=max_length,
             padding="max_length",
             truncation=True,
@@ -134,7 +135,7 @@ def summarize(text, max_length=300):
 
         output_ids = model_summ.generate(
             input_ids=input_ids,
-            max_length=max_length,
+            # max_length=max_length,
             num_beams=3,
             no_repeat_ngram_size=3,
         )[0]
@@ -445,7 +446,7 @@ async def handle_message(message: Message):
                 msgs = await get_message_history(chat_id, n)
                 if msgs:
                     to_summ = "<s>" + "\n<s>".join(msgs) + "\n"
-                    summarized_text = summarize(to_summ, max_length=3000)
+                    summarized_text = summarize(to_summ, max_length=len(to_summ))
                     if summarized_text:
                         await message.reply(
                             f"Summary of your last {len(msgs)} messages:\n\n{summarized_text}",
