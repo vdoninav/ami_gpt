@@ -122,7 +122,7 @@ def sanitize_input(text):
 
 
 # Function to summarize text using the mBART model
-def summarize(text, max_length=300):
+def summarize(text, max_length=500):
     try:
         text1 = text
         input_ids = tokenizer_summ(
